@@ -1,0 +1,68 @@
+{
+  "name": "universal-dex-sdk",
+  "version": "2.1.0",
+  "description": "Universal SDK for interacting with any DEX (Decentralized Exchange)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Tests not implemented yet\"",
+    "keeper": "node examples/keeper.js",
+    "price": "node examples/priceGenerator.js",
+    "trading": "node examples/tradingDemo.js",
+    "lint": "echo \"Linting not configured\"",
+    "prepare": "echo \"SDK ready for use\""
+  },
+  "keywords": [
+    "dex",
+    "ethereum",
+    "defi",
+    "blockchain",
+    "swap",
+    "trading",
+    "web3",
+    "smart-contracts",
+    "universal",
+    "sdk",
+    "router",
+    "pool",
+    "oracle",
+    "governance",
+    "keeper"
+  ],
+  "author": "DEX SDK Team",
+  "license": "MIT",
+  "dependencies": {
+    "ethers": "^6.7.0"
+  },
+  "devDependencies": {
+    "jest": "^29.5.0"
+  },
+  "peerDependencies": {
+    "ethers": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/universal-dex/universal-dex-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/universal-dex/universal-dex-sdk/issues"
+  },
+  "homepage": "https://github.com/universal-dex/universal-dex-sdk#readme",
+  "files": [
+    "index.js",
+    "core/",
+    "modules/",
+    "utils/",
+    "examples/",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./core/*": "./core/*",
+    "./modules/*": "./modules/*",
+    "./utils/*": "./utils/*",
+    "./examples/*": "./examples/*"
+  }
+}
