@@ -31,7 +31,9 @@
   "author": "DEX SDK Team",
   "license": "MIT",
   "dependencies": {
-    "ethers": "^6.7.0"
+    "ethers": "^6.7.0",
+        "dotenv": "^16.3.1"
+
   },
   "devDependencies": {
     "jest": "^29.5.0"

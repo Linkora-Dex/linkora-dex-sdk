@@ -1,213 +1,221 @@
+// core/DexClient.js
 const ConfigManager = require('./ConfigManager');
 const ContractManager = require('./ContractManager');
 
 class DexClient {
-    constructor(config = {}) {
-        this.configManager = new ConfigManager(config.configPath);
-        this.provider = config.provider;
-        this.signer = config.signer;
-        this.contractManager = null;
-        this.modules = new Map();
-        this.initialized = false;
-    }
+   constructor(config = {}) {
+       this.configManager = new ConfigManager(config.configPath);
+       this.provider = config.provider;
+       this.signer = config.signer;
+       this.contractManager = null;
+       this.modules = new Map();
+       this.initialized = false;
 
-    async initialize() {
-        if (this.initialized) {
-            return;
-        }
+       // Устанавливаем контракты из конфигурации createSDK
+       if (config.contracts) {
+           const currentConfig = this.configManager.getConfig();
+           currentConfig.contracts = {...currentConfig.contracts, ...config.contracts};
+           this.configManager.config = currentConfig;
+       }
+   }
 
-        try {
-            console.log('🚀 Initializing DEX Client...');
+   async initialize() {
+       if (this.initialized) {
+           return;
+       }
 
-            if (!this.provider) {
-                const {ethers} = require('ethers');
-                this.provider = new ethers.JsonRpcProvider('http://localhost:8545');
-                console.log('📡 Using default local provider');
-            }
+       try {
+           console.log('🚀 Initializing DEX Client...');
 
-            this.contractManager = new ContractManager(
-                this.configManager,
-                this.provider,
-                this.signer
-            );
+           if (!this.provider) {
+               const {ethers} = require('ethers');
+               this.provider = new ethers.JsonRpcProvider('http://localhost:8545');
+               console.log('📡 Using default local provider');
+           }
 
-            await this.contractManager.initialize();
-            this.initialized = true;
-            console.log('✅ DEX Client initialized successfully');
-            this.printInfo();
-        } catch (error) {
-            throw new Error(`Failed to initialize DEX Client: ${error.message}`);
-        }
-    }
+           this.contractManager = new ContractManager(
+               this.configManager,
+               this.provider,
+               this.signer
+           );
 
-    async connectSigner(signer) {
-        this.signer = signer;
-        if (this.contractManager) {
-            await this.contractManager.connectSigner(signer);
-        }
-        console.log('✅ Signer connected to DEX Client');
-    }
+           await this.contractManager.initialize();
+           this.initialized = true;
+           console.log('✅ DEX Client initialized successfully');
+           this.printInfo();
+       } catch (error) {
+           throw new Error(`Failed to initialize DEX Client: ${error.message}`);
+       }
+   }
 
-    addModule(name, moduleInstance) {
-        if (!moduleInstance) {
-            throw new Error(`Module instance required for ${name}`);
-        }
+   async connectSigner(signer) {
+       this.signer = signer;
+       if (this.contractManager) {
+           await this.contractManager.connectSigner(signer);
+       }
+       console.log('✅ Signer connected to DEX Client');
+   }
 
-        const moduleContext = {
-            contractManager: this.contractManager,
-            configManager: this.configManager,
-            provider: this.provider,
-            signer: this.signer,
-            client: this
-        };
+   addModule(name, moduleInstance) {
+       if (!moduleInstance) {
+           throw new Error(`Module instance required for ${name}`);
+       }
 
-        if (typeof moduleInstance.initialize === 'function') {
-            moduleInstance.initialize(moduleContext);
-        }
+       const moduleContext = {
+           contractManager: this.contractManager,
+           configManager: this.configManager,
+           provider: this.provider,
+           signer: this.signer,
+           client: this
+       };
 
-        this.modules.set(name, moduleInstance);
-        console.log(`📦 Module ${name} added`);
-    }
+       if (typeof moduleInstance.initialize === 'function') {
+           moduleInstance.initialize(moduleContext);
+       }
 
-    getModule(name) {
-        const module = this.modules.get(name);
-        if (!module) {
-            throw new Error(`Module not found: ${name}`);
-        }
-        return module;
-    }
+       this.modules.set(name, moduleInstance);
+       console.log(`📦 Module ${name} added`);
+   }
 
-    hasModule(name) {
-        return this.modules.has(name);
-    }
+   getModule(name) {
+       const module = this.modules.get(name);
+       if (!module) {
+           throw new Error(`Module not found: ${name}`);
+       }
+       return module;
+   }
 
-    async getSystemInfo() {
-        await this.ensureInitialized();
+   hasModule(name) {
+       return this.modules.has(name);
+   }
 
-        const networkInfo = await this.provider.getNetwork();
-        const contractAddresses = this.contractManager.getAllAddresses();
+   async getSystemInfo() {
+       await this.ensureInitialized();
 
-        return {
-            network: {
-                name: networkInfo.name,
-                chainId: Number(networkInfo.chainId)
-            },
-            contracts: contractAddresses,
-            tokens: this.configManager.getTokens(),
-            signer: this.signer ? await this.signer.getAddress() : null,
-            modules: Array.from(this.modules.keys()),
-            initialized: this.initialized
-        };
-    }
+       const networkInfo = await this.provider.getNetwork();
+       const contractAddresses = this.contractManager.getAllAddresses();
 
-    async getContract(name) {
-        await this.ensureInitialized();
-        return this.contractManager.getContract(name);
-    }
+       return {
+           network: {
+               name: networkInfo.name,
+               chainId: Number(networkInfo.chainId)
+           },
+           contracts: contractAddresses,
+           tokens: this.configManager.getTokens(),
+           signer: this.signer ? await this.signer.getAddress() : null,
+           modules: Array.from(this.modules.keys()),
+           initialized: this.initialized
+       };
+   }
 
-    async addContract(name, address, abiPath) {
-        await this.ensureInitialized();
-        return this.contractManager.addContract(name, address, abiPath);
-    }
+   async getContract(name) {
+       await this.ensureInitialized();
+       return this.contractManager.getContract(name);
+   }
 
-    async callContract(contractName, methodName, args = [], options = {}) {
-        await this.ensureInitialized();
-        return this.contractManager.callMethod(contractName, methodName, args, options);
-    }
+   async addContract(name, address, abiPath) {
+       await this.ensureInitialized();
+       return this.contractManager.addContract(name, address, abiPath);
+   }
 
-    async estimateGas(contractName, methodName, args = [], options = {}) {
-        await this.ensureInitialized();
-        return this.contractManager.estimateGas(contractName, methodName, args, options);
-    }
+   async callContract(contractName, methodName, args = [], options = {}) {
+       await this.ensureInitialized();
+       return this.contractManager.callMethod(contractName, methodName, args, options);
+   }
 
-    getConfig() {
-        return this.configManager.getConfig();
-    }
+   async estimateGas(contractName, methodName, args = [], options = {}) {
+       await this.ensureInitialized();
+       return this.contractManager.estimateGas(contractName, methodName, args, options);
+   }
 
-    updateConfig(updates) {
-        this.configManager.update(updates);
-    }
+   getConfig() {
+       return this.configManager.getConfig();
+   }
 
-    addToken(symbol, config) {
-        this.configManager.addToken(symbol, config);
-    }
+   updateConfig(updates) {
+       this.configManager.update(updates);
+   }
 
-    getToken(symbolOrAddress) {
-        return this.configManager.getToken(symbolOrAddress);
-    }
+   addToken(symbol, config) {
+       this.configManager.addToken(symbol, config);
+   }
 
-    async validateContracts() {
-        await this.ensureInitialized();
-        return this.contractManager.validateAllContracts();
-    }
+   getToken(symbolOrAddress) {
+       return this.configManager.getToken(symbolOrAddress);
+   }
 
-    async getBalance(address, tokenAddress) {
-        await this.ensureInitialized();
+   async validateContracts() {
+       await this.ensureInitialized();
+       return this.contractManager.validateAllContracts();
+   }
 
-        if (this.configManager.isETH(tokenAddress)) {
-            return this.provider.getBalance(address);
-        }
+   async getBalance(address, tokenAddress) {
+       await this.ensureInitialized();
 
-        try {
-            const token = this.configManager.getToken(tokenAddress);
-            if (token.address) {
-                const {ethers} = require('ethers');
-                const tokenContract = new ethers.Contract(
-                    token.address,
-                    ['function balanceOf(address) view returns (uint256)'],
-                    this.provider
-                );
-                return tokenContract.balanceOf(address);
-            }
-        } catch (error) {
-            throw new Error(`Failed to get balance: ${error.message}`);
-        }
-    }
+       if (this.configManager.isETH(tokenAddress)) {
+           return this.provider.getBalance(address);
+       }
 
-    async getUserAddress() {
-        if (!this.signer) {
-            throw new Error('Signer not connected');
-        }
-        return this.signer.getAddress();
-    }
+       try {
+           const token = this.configManager.getToken(tokenAddress);
+           if (token.address) {
+               const {ethers} = require('ethers');
+               const tokenContract = new ethers.Contract(
+                   token.address,
+                   ['function balanceOf(address) view returns (uint256)'],
+                   this.provider
+               );
+               return tokenContract.balanceOf(address);
+           }
+       } catch (error) {
+           throw new Error(`Failed to get balance: ${error.message}`);
+       }
+   }
 
-    async executeModule(moduleName, methodName, ...args) {
-        await this.ensureInitialized();
+   async getUserAddress() {
+       if (!this.signer) {
+           throw new Error('Signer not connected');
+       }
+       return this.signer.getAddress();
+   }
 
-        const module = this.getModule(moduleName);
-        if (typeof module[methodName] !== 'function') {
-            throw new Error(`Method ${methodName} not found in module ${moduleName}`);
-        }
+   async executeModule(moduleName, methodName, ...args) {
+       await this.ensureInitialized();
 
-        return module[methodName](...args);
-    }
+       const module = this.getModule(moduleName);
+       if (typeof module[methodName] !== 'function') {
+           throw new Error(`Method ${methodName} not found in module ${moduleName}`);
+       }
 
-    printInfo() {
-        const config = this.configManager.getConfig();
-        const contractAddresses = this.contractManager.getAllAddresses();
+       return module[methodName](...args);
+   }
 
-        console.log('\n🎯 DEX CLIENT INFO');
-        console.log(' Network:', config.network);
-        console.log(' Chain ID:', config.chainId);
-        console.log(' Contracts:', Object.keys(contractAddresses).length);
-        console.log(' Tokens:', Object.keys(config.tokens).length);
-        console.log(' Modules:', this.modules.size);
-        console.log(' Signer:', this.signer ? '✅ Connected' : '❌ Not connected');
-        console.log(' Status: ✅ Ready\n');
-    }
+   printInfo() {
+       const config = this.configManager.getConfig();
+       const contractAddresses = this.contractManager.getAllAddresses();
 
-    async ensureInitialized() {
-        if (!this.initialized) {
-            await this.initialize();
-        }
-    }
+       console.log('\n🎯 DEX CLIENT INFO');
+       console.log(' Network:', config.network);
+       console.log(' Chain ID:', config.chainId);
+       console.log(' Contracts:', Object.keys(contractAddresses).length);
+       console.log(' Tokens:', Object.keys(config.tokens).length);
+       console.log(' Modules:', this.modules.size);
+       console.log(' Signer:', this.signer ? '✅ Connected' : '❌ Not connected');
+       console.log(' Status: ✅ Ready\n');
+   }
 
-    dispose() {
-        this.modules.clear();
-        this.contractManager = null;
-        this.initialized = false;
-        console.log('🗑️ DEX Client disposed');
-    }
+   async ensureInitialized() {
+       if (!this.initialized) {
+           await this.initialize();
+       }
+   }
+
+   dispose() {
+       this.modules.clear();
+       this.contractManager = null;
+       this.initialized = false;
+       console.log('🗑️ DEX Client disposed');
+   }
 }
 
 module.exports = DexClient;

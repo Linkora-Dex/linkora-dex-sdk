@@ -1,129 +1,190 @@
+// examples/keeper.js (обновленная версия)
 const {createSDK} = require('../index');
 const fs = require('fs');
+require('dotenv').config();
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function loadConfig() {
-    const paths = ['./config/anvil_upgradeable-config.json', './config/anvil_final-config.json'];
-    for (const path of paths) {
-        if (fs.existsSync(path)) return JSON.parse(fs.readFileSync(path, 'utf8'));
-    }
-    throw new Error("Config not found");
+ const paths = [
+ './config/anvil_upgradeable-config.json',
+ './config/anvil_final-config.json',
+ './config/upgradeable-config.json'
+ ];
+
+ for (const path of paths) {
+ if (fs.existsSync(path)) {
+ console.log(`📋 Loading config: ${path}`);
+ return JSON.parse(fs.readFileSync(path, 'utf8'));
+ }
+ }
+ throw new Error("❌ No config found. Run: npm run prod:deploy");
 }
 
 async function main() {
-    console.log("🤖 SDK Keeper started");
+ console.log("🤖 SDK Keeper Service | Upgradeable Architecture");
 
-    const config = loadConfig();
-    const {router, trading, pool, events, keeper: keeperModule} = await createSDK({
-        rpcUrl: 'http://127.0.0.1:8545',
-        privateKey: process.env.ANVIL_KEEPER_PRIVATE_KEY,
-        contracts: config.contracts
-    });
+ const config = loadConfig();
 
-    const stats = {orders: 0, positions: 0, errors: 0};
-    let cycle = 0;
+ const keeperPrivateKey = process.env.ANVIL_KEEPER_PRIVATE_KEY || process.env.ANVIL_KEY;
+ if (!keeperPrivateKey) {
+ throw new Error("❌ Keeper private key not found. Set ANVIL_KEEPER_PRIVATE_KEY or ANVIL_KEY in .env");
+ }
 
-    const checkSystemStatus = async () => {
-        try {
-            return !(await router.isSystemPaused());
-        } catch {
-            return true;
-        }
-    };
+ const {router, keeper, oracle} = await createSDK({
+ rpcUrl: 'http://127.0.0.1:8545',
+ privateKey: keeperPrivateKey,
+ contracts: config.contracts
+ });
 
-    const processOrders = async () => {
-        const opportunities = await keeperModule.getKeeperOpportunities();
-        const orders = opportunities.filter(opp => opp.type === 'order_execution');
-        if (orders.length === 0) return 0;
+ console.log("✅ SDK Keeper initialized");
 
-        console.log(`📋 ${orders.length} executable orders`);
+ const displayDiagnostics = async (phase) => {
+ try {
+ const diagnostics = await keeper.getSystemDiagnostics();
+ console.log(`\n┌─ SDK DIAGNOSTICS: ${phase} ────────────────────────────────┐`);
+ console.log(`│ Keeper: ${diagnostics.keeper.address}`);
+ console.log(`│ ETH Balance: ${diagnostics.keeper.ethBalance} ETH`);
+ console.log(`│ Pool Balance: ${diagnostics.keeper.poolBalance} ETH`);
 
-        let executed = 0;
-        for (const order of orders) {
-            try {
-                await router.executeOrder(order.id);
-                executed++;
-                stats.orders++;
-                console.log(`✅ Order ${order.id} executed`);
-            } catch (error) {
-                stats.errors++;
-                const msg = error.message.includes('Slippage') ? 'slippage' :
-                    error.message.includes('Price change') ? 'circuit breaker' :
-                        error.message.includes('Insufficient') ? 'liquidity' : 'unknown';
-                console.log(`❌ Order ${order.id} failed: ${msg}`);
-            }
-        }
-        return executed;
-    };
+ const tokenBalances = Object.entries(diagnostics.keeper.tokenBalances);
+ if (tokenBalances.length > 0) {
+ const balanceStr = tokenBalances.map(([symbol, balance]) => `${symbol}: ${parseFloat(balance).toFixed(2)}`).join(' | ');
+ console.log(`│ Token Balances: ${balanceStr}`);
+ }
 
-    const processPositions = async () => {
-        const opportunities = await keeperModule.getKeeperOpportunities();
-        const positions = opportunities.filter(opp => opp.type === 'position_liquidation');
-        if (positions.length === 0) return 0;
+ console.log(`│ System Status: ${diagnostics.system.isOperational ? '🟢 OPERATIONAL' : '🔴 PAUSED'}`);
 
-        console.log(`⚡ ${positions.length} liquidatable positions`);
+ const contractEntries = Object.entries(diagnostics.contracts);
+ if (contractEntries.length > 0) {
+ contractEntries.forEach(([name, info]) => {
+ console.log(`│ ${name}: v${info.version} (${info.address.slice(0, 8)}...)`);
+ });
+ }
 
-        let liquidated = 0;
-        for (const position of positions) {
-            try {
-                await router.liquidatePosition(position.id);
-                liquidated++;
-                stats.positions++;
-                console.log(`⚡ Position ${position.id} liquidated`);
-            } catch (error) {
-                stats.errors++;
-                console.log(`❌ Position ${position.id} failed`);
-            }
-        }
-        return liquidated;
-    };
+ console.log("└────────────────────────────────────────────────────────────────┘");
+ } catch (error) {
+ console.log(`⚠️ Diagnostics failed: ${error.message}`);
+ }
+ };
 
-    const showStats = async () => {
-        const nextOrderId = await router.callContract('Router', 'getNextOrderId');
-        const nextPositionId = await router.callContract('Router', 'getNextPositionId');
-        const totalOrders = Number(nextOrderId) - 1;
-        const totalPositions = Number(nextPositionId) - 1;
+ await displayDiagnostics("INITIALIZATION");
 
-        console.log(`📊 Cycle ${cycle} | Orders: ${totalOrders} | Positions: ${totalPositions} | Executed: ${stats.orders} | Liquidated: ${stats.positions} | Errors: ${stats.errors}`);
-    };
+ console.log("\n🚀 SDK Keeper monitoring started");
+ console.log("🔄 Using SDK modular architecture");
+ console.log("⏹️ Press Ctrl+C to stop\n");
 
-    console.log("🚀 Monitoring started - checking every 20s");
+ let cycleCounter = 0;
 
-    while (true) {
-        try {
-            cycle++;
+ while (true) {
+ try {
+ cycleCounter++;
 
-            if (!(await checkSystemStatus())) {
-                console.log("🔴 System paused");
-                await sleep(20000);
-                continue;
-            }
+ const systemStatus = await keeper.getSystemStatus();
+ if (!systemStatus.isOperational) {
+ console.log("🔴 System not operational - waiting 20s...");
+ await sleep(20000);
+ continue;
+ }
 
-            const [ordersExecuted, positionsLiquidated] = await Promise.all([
-                processOrders(),
-                cycle % 2 === 0 ? processPositions() : Promise.resolve(0)
-            ]);
+ const nextOrderId = await keeper.getNextOrderId();
+ const totalOrders = Number(nextOrderId) - 1;
 
-            if (ordersExecuted > 0 || positionsLiquidated > 0 || cycle % 10 === 1) {
-                await showStats();
-            }
+ if (totalOrders > 0) {
+ console.log(`🔍 Cycle ${cycleCounter}: Processing ${totalOrders} orders via SDK`);
 
-        } catch (error) {
-            stats.errors++;
-            console.log(`🚨 Cycle error: ${error.message}`);
-        }
+ const executableOrders = await keeper.getExecutableOrders();
+ const allOrders = await keeper.getAllOrders();
+ const completedOrders = allOrders.filter(order => order.executed);
+ const activePendingOrders = allOrders.filter(order => !order.executed);
 
-        await sleep(20000);
-    }
+ console.log(`📊 Orders: ${executableOrders.length} executable | ${completedOrders.length} completed | ${activePendingOrders.length} pending`);
+
+ for (const order of executableOrders) {
+ console.log(`🎯 Executing order ${order.id}: ${order.orderType} ${order.direction} (${order.tokenPair})`);
+ console.log(`   Amount: ${order.amountIn} | Target: ${order.targetPrice}`);
+
+ try {
+ await keeper.selfExecuteOrder(order.id);
+ console.log(`✅ Order ${order.id} executed successfully via SDK`);
+ } catch (error) {
+ const errorMsg = error.message.split('\n')[0];
+ console.log(`❌ Order ${order.id} execution failed: ${errorMsg}`);
+
+ if (error.message.includes('Slippage')) {
+ console.log(`   Reason: Slippage protection triggered`);
+ } else if (error.message.includes('Price change')) {
+ console.log(`   Reason: Circuit breaker triggered`);
+ } else if (error.message.includes('Insufficient')) {
+ console.log(`   Reason: Insufficient funds/liquidity`);
+ }
+ }
+ }
+
+ if (activePendingOrders.length > 0 && executableOrders.length === 0) {
+ activePendingOrders.slice(0, 3).forEach(order => {
+ console.log(`⏳ Order ${order.id}: ${order.orderType} ${order.direction} waiting for price condition`);
+ });
+ }
+ }
+
+ if (cycleCounter % 2 === 0) {
+ const nextPositionId = await keeper.getNextPositionId();
+ const totalPositions = Number(nextPositionId) - 1;
+
+ if (totalPositions > 0) {
+ console.log(`📊 Checking ${totalPositions} positions via SDK`);
+
+ const liquidatablePositions = await keeper.getLiquidatablePositions();
+
+ for (const position of liquidatablePositions) {
+ console.log(`⚡ Liquidating position ${position.id}: ${position.pnlPercent}% loss`);
+
+ try {
+ await keeper.liquidatePosition(position.id);
+ console.log(`⚡ Position ${position.id} liquidated via SDK`);
+ } catch (error) {
+ console.log(`❌ Liquidation failed for position ${position.id}: ${error.message}`);
+ }
+ }
+
+ if (liquidatablePositions.length === 0 && totalPositions > 0) {
+ console.log(`💚 All ${totalPositions} positions are healthy`);
+ }
+ }
+ }
+
+ if (totalOrders === 0 && cycleCounter % 4 === 0) {
+ console.log(`💤 No active orders | Cycle ${cycleCounter} | SDK system operational`);
+ }
+
+ if (cycleCounter % 20 === 0) {
+ const stats = keeper.getKeeperStats();
+ console.log(`\n📈 SDK KEEPER STATS`);
+ console.log(` Orders executed: ${stats.ordersExecuted}`);
+ console.log(` Positions liquidated: ${stats.positionsLiquidated}`);
+ console.log(` Errors: ${stats.errors}`);
+ console.log(` Last run: ${stats.lastRun || 'Never'}\n`);
+ }
+
+ } catch (error) {
+ console.log(`🚨 SDK Keeper cycle error: ${error.message}`);
+ }
+
+ await sleep(20000);
+ }
 }
 
 process.on('SIGINT', () => {
-    console.log('\n🛑 Keeper stopped');
-    process.exit(0);
+ console.log('\n🛑 SDK Keeper service stopped');
+ process.exit(0);
 });
 
-main().catch(error => {
-    console.error("🚨 Keeper failed:", error.message);
-    process.exit(1);
-});
+if (require.main === module) {
+ main().catch(error => {
+ console.error("🚨 SDK Keeper failed:", error.message);
+ process.exit(1);
+ });
+}
+
+module.exports = main;

@@ -1,3 +1,4 @@
+// index.js
 const DexClient = require('./core/DexClient');
 const ConfigManager = require('./core/ConfigManager');
 const ContractManager = require('./core/ContractManager');
@@ -20,135 +21,153 @@ const ValidationHelpers = require('./utils/ValidationHelpers');
 const constants = require('./utils/constants');
 
 module.exports = {
-   // Core classes
-   DexClient,
-   ConfigManager,
-   ContractManager,
+    // Core classes
+    DexClient,
+    ConfigManager,
+    ContractManager,
 
-   // Trading modules
-   modules: {
-       RouterModule,
-       PoolModule,
-       TradingModule,
-       OracleModule,
-       GovernanceModule,
-       EventModule,
-       KeeperModule
-   },
+    // Trading modules
+    modules: {
+        RouterModule,
+        PoolModule,
+        TradingModule,
+        OracleModule,
+        GovernanceModule,
+        EventModule,
+        KeeperModule
+    },
 
-   // Utilities
-   utils: {
-       Formatter,
-       Calculator,
-       Validator,
-       ContractHelpers,
-       ValidationHelpers,
-       constants
-   },
+    // Utilities
+    utils: {
+        Formatter,
+        Calculator,
+        Validator,
+        ContractHelpers,
+        ValidationHelpers,
+        constants
+    },
 
-   // Factory functions
-   createClient: (config) => new DexClient(config),
-   createConfig: (configPath) => new ConfigManager(configPath),
-   createValidator: (configManager) => new Validator(configManager),
-   createFormatter: (configManager) => new Formatter(configManager),
-   createCalculator: () => new Calculator(),
+    // Factory functions
+    createClient: (config) => new DexClient(config),
+    createConfig: (configPath) => new ConfigManager(configPath),
+    createValidator: (configManager) => new Validator(configManager),
+    createFormatter: (configManager) => new Formatter(configManager),
+    createCalculator: () => new Calculator(),
 
-   // Module factories
-   createRouter: (context) => {
-       const router = new RouterModule();
-       router.initialize(context);
-       return router;
-   },
+    // Module factories
+    createRouter: (context) => {
+        const router = new RouterModule();
+        router.initialize(context);
+        return router;
+    },
 
-   createPool: (context) => {
-       const pool = new PoolModule();
-       pool.initialize(context);
-       return pool;
-   },
+    createPool: (context) => {
+        const pool = new PoolModule();
+        pool.initialize(context);
+        return pool;
+    },
 
-   createTrading: (context) => {
-       const trading = new TradingModule();
-       trading.initialize(context);
-       return trading;
-   },
+    createTrading: (context) => {
+        const trading = new TradingModule();
+        trading.initialize(context);
+        return trading;
+    },
 
-   createOracle: (context) => {
-       const oracle = new OracleModule();
-       oracle.initialize(context);
-       return oracle;
-   },
+    createOracle: (context) => {
+        const oracle = new OracleModule();
+        oracle.initialize(context);
+        return oracle;
+    },
 
-   createGovernance: (context) => {
-       const governance = new GovernanceModule();
-       governance.initialize(context);
-       return governance;
-   },
+    createGovernance: (context) => {
+        const governance = new GovernanceModule();
+        governance.initialize(context);
+        return governance;
+    },
 
-   createEvents: (context) => {
-       const events = new EventModule();
-       events.initialize(context);
-       return events;
-   },
+    createEvents: (context) => {
+        const events = new EventModule();
+        events.initialize(context);
+        return events;
+    },
 
-   createKeeper: (context) => {
-       const keeper = new KeeperModule();
-       keeper.initialize(context);
-       return keeper;
-   },
+    createKeeper: (context) => {
+        const keeper = new KeeperModule();
+        keeper.initialize(context);
+        return keeper;
+    },
 
-   // Complete SDK factory
-   createSDK: async (config) => {
-       const client = new DexClient(config);
-       await client.initialize();
+    // Complete SDK factory
+    createSDK: async (config) => {
+        let provider, signer;
 
-       const context = {
-           provider: client.provider,
-           signer: client.signer,
-           contractManager: client.contractManager,
-           configManager: client.configManager,
-           logger: client.logger
-       };
+        if (config.rpcUrl) {
+            const {ethers} = require('ethers');
+            provider = new ethers.JsonRpcProvider(config.rpcUrl);
+        }
 
-       const router = new RouterModule();
-       router.initialize(context);
+        if (config.privateKey && provider) {
+            const {ethers} = require('ethers');
+            signer = new ethers.Wallet(config.privateKey, provider);
+        }
 
-       const pool = new PoolModule();
-       pool.initialize(context);
+        const client = new DexClient({
+            configPath: config.configPath,
+            provider,
+            signer,
+            contracts: config.contracts
+        });
 
-       const trading = new TradingModule();
-       trading.initialize(context);
+        await client.initialize();
 
-       const oracle = new OracleModule();
-       oracle.initialize(context);
+        const context = {
+            provider: client.provider,
+            signer: client.signer,
+            contractManager: client.contractManager,
+            configManager: client.configManager,
+            logger: client.logger
+        };
 
-       const governance = new GovernanceModule();
-       governance.initialize(context);
+        const router = new RouterModule();
+        router.initialize(context);
 
-       const events = new EventModule();
-       events.initialize(context);
+        const pool = new PoolModule();
+        pool.initialize(context);
 
-       const keeper = new KeeperModule();
-       keeper.initialize(context);
+        const trading = new TradingModule();
+        trading.initialize(context);
 
-       return {
-           client,
-           router,
-           pool,
-           trading,
-           oracle,
-           governance,
-           events,
-           keeper,
-           utils: {
-               formatter: new Formatter(client.configManager),
-               calculator: new Calculator(),
-               validator: new Validator(client.configManager),
-               contractHelpers: ContractHelpers,
-               validationHelpers: ValidationHelpers
-           },
-           context
-       };
-   },
+        const oracle = new OracleModule();
+        oracle.initialize(context);
 
-   version: '2.1.0'
+        const governance = new GovernanceModule();
+        governance.initialize(context);
+
+        const events = new EventModule();
+        events.initialize(context);
+
+        const keeper = new KeeperModule();
+        keeper.initialize(context);
+
+        return {
+            client,
+            router,
+            pool,
+            trading,
+            oracle,
+            governance,
+            events,
+            keeper,
+            utils: {
+                formatter: new Formatter(client.configManager),
+                calculator: new Calculator(),
+                validator: new Validator(client.configManager),
+                contractHelpers: ContractHelpers,
+                validationHelpers: ValidationHelpers
+            },
+            context
+        };
+    },
+
+    version: '2.1.0'
 };
